@@ -48,7 +48,9 @@ print("model size before quantization: ", print_size_of_model(model, 'C:/Users/h
 
 
 # setup configuration and prepare model
-qconfig = torch.quantization.default_qconfig
+# qconfig = torch.quantization.default_qconfig
+# torch.backends.quantized.engine = 'qnnpack'
+qconfig = torch.quantization.get_default_qat_qconfig('qnnpack')
 print(qconfig)
 torch.quantization.prepare(model, inplace=True)
 
@@ -62,6 +64,8 @@ def evaluate(model, n_cases, tokenizer, fileLocation, device = 'cpu'):
             tmp = text.strip()
             if not tmp:
                 continue
+            if cnt % 10 == 0:
+                print(tmp)
             input_ids = tokenizer.encode(tmp, add_special_tokens=False, return_tensors="pt").to(device)
             output = model(input_ids)
             cnt += 1
@@ -70,6 +74,7 @@ def evaluate(model, n_cases, tokenizer, fileLocation, device = 'cpu'):
                 return
     ofile.close()
     return
+
 
 evaluate(model, n_cases = 100, tokenizer = tokenizer, fileLocation = 'C:/Users/hanyu/internal_work/AML/distilgpt2-finetuned/prediction_text.txt', device = 'cpu')
 

@@ -222,16 +222,21 @@ class Block(nn.Module):
         self.ln_2 = nn.LayerNorm(nx, eps=config.layer_norm_epsilon)
         self.mlp = MLP(4 * nx, config)
 
+        self.quant = QuantStub()
+        self.dequant = DeQuantStub()
+        self.skip_add = nn.quantized.FloatFunctional()
+
     def forward(self, x, layer_past=None, attention_mask=None, head_mask=None):
+        x = self.quant(x)
         output_attn = self.attn(
             self.ln_1(x), layer_past=layer_past, attention_mask=attention_mask, head_mask=head_mask
         )
         a = output_attn[0]  # output_attn: a, present, (attentions)
 
-        x = x + a
+        x = self.skip_add.add(x, a)
         m = self.mlp(self.ln_2(x))
-        x = x + m
-
+        x = self.skip_add.add(x, m)
+        x = self.dequant(x)
         outputs = [x] + output_attn[1:]
         return outputs  # x, present, (attentions)
 
@@ -402,6 +407,7 @@ class GPT2Model(GPT2PreTrainedModel):
         last_hidden_states = outputs[0]  # The last hidden-state is the first element of the output tuple
 
         """
+        input_ids = self.quant(input_ids)
         if input_ids is not None and inputs_embeds is not None:
             raise ValueError("You cannot specify both input_ids and inputs_embeds at the same time")
         elif input_ids is not None:
@@ -501,6 +507,7 @@ class GPT2Model(GPT2PreTrainedModel):
         if self.output_hidden_states:
             all_hidden_states = all_hidden_states + (hidden_states,)
 
+        hidden_states = self.dequant(hidden_states)
         outputs = (hidden_states,)
         if self.output_past:
             outputs = outputs + (presents,)
