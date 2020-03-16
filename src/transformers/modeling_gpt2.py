@@ -28,6 +28,7 @@ from .activations import gelu_new
 from .configuration_gpt2 import GPT2Config
 from .file_utils import add_start_docstrings, add_start_docstrings_to_callable
 from .modeling_utils import Conv1D, PreTrainedModel, SequenceSummary, prune_conv1d_layer
+from torch.quantization import QuantStub, DeQuantStub
 
 
 logger = logging.getLogger(__name__)
@@ -340,6 +341,10 @@ class GPT2Model(GPT2PreTrainedModel):
 
         self.init_weights()
 
+        self.quant_add = nn.quantized.FloatFunctional()
+        self.quant = QuantStub()
+        self.dequant = DeQuantStub()
+
     def get_input_embeddings(self):
         return self.wte
 
@@ -466,7 +471,7 @@ class GPT2Model(GPT2PreTrainedModel):
             token_type_embeds = self.wte(token_type_ids)
         else:
             token_type_embeds = 0
-        hidden_states = inputs_embeds + position_embeds + token_type_embeds
+        hidden_states = self.quant_add.add(self.quant_add.add(inputs_embeds, position_embeds), token_type_embeds)
         hidden_states = self.drop(hidden_states)
 
         output_shape = input_shape + (hidden_states.size(-1),)
@@ -509,6 +514,8 @@ class GPT2Model(GPT2PreTrainedModel):
         return outputs  # last hidden state, (presents), (all hidden_states), (attentions)
 
 
+
+
 @add_start_docstrings(
     """The GPT2 Model transformer with a language modeling head on top
     (linear layer with weights tied to the input embeddings). """,
@@ -517,6 +524,10 @@ class GPT2Model(GPT2PreTrainedModel):
 class GPT2LMHeadModel(GPT2PreTrainedModel):
     def __init__(self, config):
         super().__init__(config)
+
+        self.quant = QuantStub()
+        self.dequant = DeQuantStub()
+
         self.transformer = GPT2Model(config)
         self.lm_head = nn.Linear(config.n_embd, config.vocab_size, bias=False)
 
@@ -587,6 +598,7 @@ class GPT2LMHeadModel(GPT2PreTrainedModel):
         loss, logits = outputs[:2]
 
         """
+        input_ids = self.quant(input_ids)
         transformer_outputs = self.transformer(
             input_ids,
             past=past,
@@ -597,6 +609,7 @@ class GPT2LMHeadModel(GPT2PreTrainedModel):
             inputs_embeds=inputs_embeds,
         )
         hidden_states = transformer_outputs[0]
+        hidden_states = self.dequant(hidden_states)
 
         lm_logits = self.lm_head(hidden_states)
 
