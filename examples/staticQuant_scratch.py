@@ -7,7 +7,7 @@ import torch.nn as nn
 from torch.nn.utils.rnn import pad_sequence
 from typing import Callable
 import random
-
+import codecs
 from transformers import (
     GPT2LMHeadModel,
     GPT2Tokenizer
@@ -44,21 +44,22 @@ def print_size_of_model(model, saveLocation):
     os.remove(saveLocation)
     return tmp
 
-print("model size before quantization: ", print_size_of_model(model, 'C:/Users/hanyu/internal_work/AML/distilgpt2-finetuned/tmp/temp.p'))
+print("model size before quantization: ", print_size_of_model(model, './temp.p'))
 
 
 # setup configuration and prepare model
 # qconfig = torch.quantization.default_qconfig
 # torch.backends.quantized.engine = 'qnnpack'
-qconfig = torch.quantization.get_default_qat_qconfig('qnnpack')
-print(qconfig)
+# qconfig = torch.quantization.get_default_qat_qconfig('qnnpack')
+model.qconfig = torch.quantization.default_qconfig
+print(model.qconfig)
 torch.quantization.prepare(model, inplace=True)
 
 # calibration
 def evaluate(model, n_cases, tokenizer, fileLocation, device = 'cpu'):
     model.eval()
     cnt = 0
-    ofile = open(fileLocation)
+    ofile = codecs.open(fileLocation, 'r', encoding='utf-8', errors='ignore')
     with torch.no_grad():
         for text in ofile:
             tmp = text.strip()
@@ -76,9 +77,11 @@ def evaluate(model, n_cases, tokenizer, fileLocation, device = 'cpu'):
     return
 
 
+#evaluate(model, n_cases = 100, tokenizer = tokenizer, fileLocation = './transformers/prediction_text.txt', device = 'cpu')
 evaluate(model, n_cases = 100, tokenizer = tokenizer, fileLocation = 'C:/Users/hanyu/internal_work/AML/distilgpt2-finetuned/prediction_text.txt', device = 'cpu')
 
 # conversion
 torch.quantization.convert(model, inplace=True)
 
-print("model size after quantization: ", print_size_of_model(model, 'C:/Users/hanyu/internal_work/AML/distilgpt2-finetuned/tmp/temp.p'))
+print("model size after quantization: ", print_size_of_model(model, './temp.p'))
+

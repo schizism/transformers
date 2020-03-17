@@ -116,6 +116,12 @@ class Attention(nn.Module):
         self.resid_dropout = nn.Dropout(config.resid_pdrop)
         self.pruned_heads = set()
 
+        self.quant = QuantStub()
+        self.dequant = DeQuantStub()
+        self.skip_add = nn.quantized.FloatFunctional()
+        self.qconfig = torch.quantization.get_default_qat_qconfig('qnnpack')
+
+
     def prune_heads(self, heads):
         if len(heads) == 0:
             return
@@ -176,6 +182,7 @@ class Attention(nn.Module):
             return x.permute(0, 2, 1, 3)  # (batch, head, seq_length, head_features)
 
     def forward(self, x, layer_past=None, attention_mask=None, head_mask=None):
+        x = self.quant(x)
         x = self.c_attn(x)
         query, key, value = x.split(self.split_size, dim=2)
         query = self.split_heads(query)
@@ -194,6 +201,7 @@ class Attention(nn.Module):
         a = self.c_proj(a)
         a = self.resid_dropout(a)
 
+        a = self.dequant(a)
         outputs = [a, present] + attn_outputs[1:]
         return outputs  # a, present, (attentions)
 
